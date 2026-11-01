@@ -2,14 +2,14 @@ import os
 import sys
 import time
 import asyncio
-from pyrogram import Client, filters
+from pyrogram import Client, filters, idle
 from pyrogram.types import Message
 
 API_ID = int(os.environ.get("API_ID"))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# MTProto Direct Client (කිසිදු Local Server එකක් නැත, 2GB Fully Unlocked)
+# MTProto Client
 app = Client(
     "speed_bot",
     api_id=API_ID,
@@ -38,17 +38,16 @@ def time_formatter(seconds: float) -> str:
         return f"{minutes}m {sec}s"
     return f"{sec}s"
 
-# Real-time Speed සහ Progress පෙන්වන Function එක
 async def progress_bar(current, total, status_msg, action_type, start_time):
     now = time.time()
     diff = now - start_time
     if diff < 0.2:
         return
 
-    # FloodWait වැළැක්වීමට තත්පර 2කට වරක් edit කිරීම
     if not hasattr(progress_bar, "last_edit"):
         progress_bar.last_edit = 0
 
+    # තත්පර 2කට වරක් progress update කිරීම
     if now - progress_bar.last_edit > 2.0 or current == total:
         progress_bar.last_edit = now
         percentage = (current * 100) / total
@@ -61,7 +60,7 @@ async def progress_bar(current, total, status_msg, action_type, start_time):
         text = (
             f"⚡ <b>{action_type}...</b>\n\n"
             f"<code>[{bar}]</code> {percentage:.1f}%\n"
-            f"📦 <b>Data:</b> {humanbits(current)} / {humanbits(total)}\n"
+            f"📦 <b>Transferred:</b> {humanbits(current)} / {humanbits(total)}\n"
             f"🚀 <b>Real Speed:</b> {humanbits(speed)}/s\n"
             f"⏱️ <b>ETA:</b> {time_formatter(eta)}"
         )
@@ -78,7 +77,7 @@ async def speed_test(client: Client, message: Message):
     status_msg = await message.reply_text(
         f"📊 <b>Starting Pyrogram MTProto Speed Test...</b>\n"
         f"📦 <b>File Size:</b> {humanbits(file_size)}\n"
-        f"⚡ <b>Engine:</b> Direct Pyrogram (2GB Unlocked)"
+        f"⚡ <b>Engine:</b> Direct Pyrogram (2GB Mode)"
     )
 
     # 1. DOWNLOAD STEP
@@ -134,7 +133,6 @@ async def speed_test(client: Client, message: Message):
         ul_time = time.time() - start_ul
         ul_speed = (file_size / ul_time) if ul_time > 0 else 0
 
-        # අවසාන සාරාංශය
         summary = (
             f"🏁 <b>Speed Test Complete!</b>\n\n"
             f"📦 <b>File Size:</b> {humanbits(file_size)}\n"
@@ -147,11 +145,9 @@ async def speed_test(client: Client, message: Message):
     except Exception as e:
         await status_msg.edit_text(f"❌ <b>Upload Error:</b> {e}")
     finally:
-        # Runner එකේ Storage පිරීම වැළැක්වීමට තාවකාලික ගොනුව මකා දැමීම
         if file_path and os.path.exists(file_path):
             os.remove(file_path)
 
-# GitHub Actions Limit එකට පෙර Safe Restart
 async def auto_restart_timer():
     await asyncio.sleep(19800)
     print("Action limit approaching. Stopping bot...")
@@ -160,10 +156,11 @@ async def auto_restart_timer():
 
 async def main():
     await app.start()
-    print("🚀 Pyrogram Bot is running (2GB MTProto direct)!")
+    print("🚀 Pyrogram Bot is online and listening!")
     asyncio.create_task(auto_restart_timer())
-    await asyncio.Event().wait()
+    # Polling updates නිසි ලෙස ක්‍රියාත්මක වීමට idle() භාවිතා කිරීම
+    await idle()
+    await app.stop()
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    
+    app.run(main())
