@@ -3,7 +3,7 @@ import sys
 import time
 import asyncio
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, FSInputFile
+from aiogram.types import Message
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.client.default import DefaultBotProperties
@@ -45,7 +45,7 @@ async def upload_spinner(msg: Message, start_time: float, file_size_str: str):
                     f"📤 <b>Uploading to Telegram... {frame}</b>\n\n"
                     f"📦 <b>Size:</b> {file_size_str}\n"
                     f"⏱️ <b>Elapsed Time:</b> {elapsed:.0f}s\n\n"
-                    f"<i>⚡ Zero-Copy mode active.</i>"
+                    f"<i>⚡ True Zero-Copy mode active.</i>"
                 )
             except Exception:
                 pass
@@ -62,7 +62,7 @@ async def speed_test_handler(message: Message):
 
     status_msg = await message.reply(
         "📊 <b>Starting Speed Test...</b>\n"
-        "⚡ <b>Engine:</b> LOCAL BOT API (Zero-Copy)\n"
+        "⚡ <b>Engine:</b> LOCAL BOT API (True Zero-Copy)\n"
         f"📦 <b>File Size:</b> {size_str}"
     )
 
@@ -70,7 +70,6 @@ async def speed_test_handler(message: Message):
     start_download = time.time()
     try:
         file_info = await bot.get_file(file_id)
-        # දැන් Docker සහ Host දෙකේම Path සමාන නිසා කිසිදු Replace කිරීමක් අවශ්‍ය නොවේ!
         real_file_path = file_info.file_path
         
     except Exception as e:
@@ -92,7 +91,10 @@ async def speed_test_handler(message: Message):
     spinner_task = asyncio.create_task(upload_spinner(status_msg, start_upload, size_str))
     
     try:
-        upload_input = FSInputFile(real_file_path)
+        # 💡 TRUE ZERO-COPY: FSInputFile වෙනුවට කෙලින්ම file:// URI එක ලබා දීම!
+        # මේ නිසා Python file එක read නොකරන අතර Permission error එකක් එන්නේ නැත.
+        upload_input = f"file://{real_file_path}"
+        
         base_caption = (
             "✅ <b>Speed Test Complete!</b>\n\n"
             "⚡ <b>Server:</b> Local Bot API Server\n"
@@ -114,12 +116,10 @@ async def speed_test_handler(message: Message):
         final_caption = base_caption + f"📤 <b>Upload Speed:</b> {humanbits(ul_speed)}/s ({ul_time:.2f}s)"
         await sent_msg.edit_caption(caption=final_caption)
         
-        # Upload එක සාර්ථක නම් පමණක් Status message එක මකා දමන්න
         await status_msg.delete()
 
     except Exception as e:
         spinner_task.cancel()
-        # Error එකක් ආවොත් මකා දමන්නේ නැතිව තිරයේ දිස්වීමට සැලැස්වීම
         await status_msg.edit_text(f"❌ <b>Upload Error:</b> {e}")
 
 async def auto_restart_timer():
@@ -129,7 +129,7 @@ async def auto_restart_timer():
     sys.exit(0)
 
 async def main():
-    print("🚀 Bot is polling via Local Bot Server (Zero-Copy)!")
+    print("🚀 Bot is polling via Local Bot Server (True Zero-Copy)!")
     asyncio.create_task(auto_restart_timer())
     await dp.start_polling(bot)
 
