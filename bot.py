@@ -6,15 +6,20 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, FSInputFile
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
+from aiogram.client.default import DefaultBotProperties
+from aiogram.exceptions import TelegramBadRequest
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# Local Telegram Bot API Server endpoint එක සැකසීම (is_local=True අනිවාර්ය වේ)
 session = AiohttpSession(
     api=TelegramAPIServer.from_base("http://127.0.0.1:8081", is_local=True)
 )
 
-bot = Bot(token=BOT_TOKEN, session=session)
+bot = Bot(
+    token=BOT_TOKEN, 
+    session=session,
+    default=DefaultBotProperties(parse_mode="HTML")
+)
 dp = Dispatcher()
 
 def humanbits(size: float) -> str:
@@ -28,30 +33,50 @@ def humanbits(size: float) -> str:
         n += 1
     return f"{size:.2f} {power_labels[n]}B"
 
+# Upload වන අතරතුර කාලය පෙන්වන සජීවී Spinner එක
+async def upload_spinner(msg: Message, start_time: float, file_size_str: str):
+    frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    i = 0
+    try:
+        while True:
+            elapsed = time.time() - start_time
+            frame = frames[i % len(frames)]
+            i += 1
+            try:
+                await msg.edit_text(
+                    f"📤 <b>Uploading to Telegram... {frame}</b>\n\n"
+                    f"📦 <b>Size:</b> {file_size_str}\n"
+                    f"⏱️ <b>Elapsed Time:</b> {elapsed:.0f}s\n\n"
+                    f"<i>⚡ Zero-Copy mode active. (Progress bar is bypassed for maximum speed)</i>"
+                )
+            except TelegramBadRequest:
+                pass # Text එක වෙනස් නොවුණොත් එන error එක මඟ හැරීම
+            await asyncio.sleep(2)
+    except asyncio.CancelledError:
+        pass
+
 @dp.message(F.document | F.video | F.audio)
 async def speed_test_handler(message: Message):
     media = message.document or message.video or message.audio
     file_id = media.file_id
     file_size = media.file_size or 0
+    size_str = humanbits(file_size)
 
     status_msg = await message.reply(
         "📊 <b>Starting Speed Test...</b>\n"
-        "⚡ <b>Engine:</b> LOCAL BOT API (2GB LIMIT UNLOCKED)\n"
-        f"📦 <b>File Size:</b> {humanbits(file_size)}"
+        "⚡ <b>Engine:</b> LOCAL BOT API (Zero-Copy)\n"
+        f"📦 <b>File Size:</b> {size_str}"
     )
 
-    # ---- DOWNLOAD STEP ----
+    # ---- DOWNLOAD STEP (Zero-Copy) ----
     start_download = time.time()
     try:
-        # Local Server එකෙන් file path එක ලබා ගැනීම
         file_info = await bot.get_file(file_id)
         
-        # Local mode එකේදී file_path එක කෙලින්ම local disk path එකක් වේ
-        source_file_path = file_info.file_path
-        
-        download_dest = f"/tmp/dl_{file_info.file_unique_id}"
-        await bot.download_file(source_file_path, download_dest)
-        
+        real_file_path = file_info.file_path.replace(
+            "/var/lib/telegram-bot-api", 
+            "/tmp/telegram-bot-api-data"
+        )
     except Exception as e:
         await status_msg.edit_text(f"❌ <b>Download Error:</b> {e}")
         return
@@ -60,20 +85,25 @@ async def speed_test_handler(message: Message):
     dl_speed = (file_size / dl_time) if dl_time > 0 else 0
 
     await status_msg.edit_text(
-        f"📥 <b>Download Finished!</b>\n"
-        f"⏱️ <b>Time:</b> {dl_time:.2f}s ({humanbits(dl_speed)}/s)\n\n"
-        f"📤 Uploading back to Telegram..."
+        f"📥 <b>Download Finished Instantly!</b>\n"
+        f"⏱️ <b>Time:</b> {dl_time:.2f}s (Direct File Mapping)\n\n"
+        f"⏳ Preparing to upload..."
     )
+    await asyncio.sleep(1)
 
     # ---- UPLOAD STEP ----
     start_upload = time.time()
+    
+    # Spinner එක වෙනම Background Task එකක් ලෙස ආරම්භ කිරීම
+    spinner_task = asyncio.create_task(upload_spinner(status_msg, start_upload, size_str))
+    
     try:
-        upload_input = FSInputFile(download_dest)
+        upload_input = FSInputFile(real_file_path)
         base_caption = (
             "✅ <b>Speed Test Complete!</b>\n\n"
             "⚡ <b>Server:</b> Local Bot API Server\n"
-            f"📦 <b>Size:</b> {humanbits(file_size)}\n"
-            f"📥 <b>Download Speed:</b> {humanbits(dl_speed)}/s ({dl_time:.2f}s)\n"
+            f"📦 <b>Size:</b> {size_str}\n"
+            f"📥 <b>Download:</b> {humanbits(dl_speed)}/s (Direct)\n"
         )
 
         if message.video:
@@ -83,6 +113,9 @@ async def speed_test_handler(message: Message):
         else:
             sent_msg = await message.reply_document(document=upload_input, caption=base_caption)
 
+        # Upload එක සාර්ථක වූ පසු Spinner එක නැවැත්වීම
+        spinner_task.cancel()
+
         ul_time = time.time() - start_upload
         ul_speed = (file_size / ul_time) if ul_time > 0 else 0
 
@@ -90,10 +123,9 @@ async def speed_test_handler(message: Message):
         await sent_msg.edit_caption(caption=final_caption)
 
     except Exception as e:
+        spinner_task.cancel()
         await status_msg.edit_text(f"❌ <b>Upload Error:</b> {e}")
     finally:
-        if os.path.exists(download_dest):
-            os.remove(download_dest)
         try:
             await status_msg.delete()
         except Exception:
@@ -101,12 +133,12 @@ async def speed_test_handler(message: Message):
 
 async def auto_restart_timer():
     await asyncio.sleep(19800)
-    print("Action 6h limit approaching. Stopping dispatcher...")
+    print("Action limit approaching. Stopping dispatcher...")
     await dp.stop_polling()
     sys.exit(0)
 
 async def main():
-    print("🚀 Bot is now polling via Local Bot Server (2GB Limit Unlocked)!")
+    print("🚀 Bot is polling via Local Bot Server (Zero-Copy)!")
     asyncio.create_task(auto_restart_timer())
     await dp.start_polling(bot)
 
