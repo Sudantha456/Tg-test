@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   workflow_dispatch:
   schedule:
-    # පැය 6කට වරක් ස්වයංක්‍රීයව නැවත පණ ගැන්වීමට (GitHub Action 6h limit)
+    # පැය 6කට වරක් ස්වයංක්‍රීයව නැවත පණ ගැන්වීමට (Cron Job)
     - cron: '0 */6 * * *'
 
 jobs:
@@ -16,31 +16,34 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    # 1. අවශ්‍ය මෘදුකාංග සහ Python Packages (aiogram v3) ස්ථාපනය කිරීම
+    # 1. අවශ්‍ය මෘදුකාංග සහ aiogram ස්ථාපනය කිරීම
     - name: Install System Dependencies & Python Packages
       run: |
         sudo apt update
         sudo apt install -y ffmpeg python3-pip curl
         pip3 install aiogram aiohttp
 
-    # 2. Local Bot API Server එක Docker මඟින් Background Run කිරීම (--local mode)
+    # 2. Local Bot API Container එක Run කිරීම
     - name: Start Telegram Bot API Server
       run: |
+        mkdir -p /tmp/telegram-bot-api-data
+        chmod 777 /tmp/telegram-bot-api-data
         docker run -d \
           --name tg-bot-api \
           -p 8081:8081 \
           -v /tmp/telegram-bot-api-data:/var/lib/telegram-bot-api \
-          -e TELEGRAM_API_ID=${{ secrets.API_ID }} \
-          -e TELEGRAM_API_HASH=${{ secrets.API_HASH }} \
           aiogram/telegram-bot-api:latest \
+          --api-id="${{ secrets.API_ID }}" \
+          --api-hash="${{ secrets.API_HASH }}" \
           --local \
           --http-port=8081 \
           --dir=/var/lib/telegram-bot-api
 
-    # 3. Local Server එක සක්‍රීයදැයි පරීක්ෂා කිරීම (404 ලැබුණද Connection එක සාර්ථක ලෙස සැලකේ)
+    # 3. Server එක ready වනතුරු තත්පර 5ක් සිට පරීක්ෂා කිරීම සහ Docker logs බැලීම
     - name: Verify Local Bot Server Connection
       run: |
         sleep 5
+        docker logs tg-bot-api
         curl -s http://127.0.0.1:8081 || exit 1
 
     # 4. Aiogram Bot එක ධාවනය කිරීම
