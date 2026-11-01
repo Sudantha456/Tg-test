@@ -7,7 +7,6 @@ from aiogram.types import Message, FSInputFile
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.client.default import DefaultBotProperties
-from aiogram.exceptions import TelegramBadRequest
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
@@ -33,7 +32,6 @@ def humanbits(size: float) -> str:
         n += 1
     return f"{size:.2f} {power_labels[n]}B"
 
-# Upload වන අතරතුර කාලය පෙන්වන සජීවී Spinner එක
 async def upload_spinner(msg: Message, start_time: float, file_size_str: str):
     frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
     i = 0
@@ -47,10 +45,10 @@ async def upload_spinner(msg: Message, start_time: float, file_size_str: str):
                     f"📤 <b>Uploading to Telegram... {frame}</b>\n\n"
                     f"📦 <b>Size:</b> {file_size_str}\n"
                     f"⏱️ <b>Elapsed Time:</b> {elapsed:.0f}s\n\n"
-                    f"<i>⚡ Zero-Copy mode active. (Progress bar is bypassed for maximum speed)</i>"
+                    f"<i>⚡ Zero-Copy mode active.</i>"
                 )
-            except TelegramBadRequest:
-                pass # Text එක වෙනස් නොවුණොත් එන error එක මඟ හැරීම
+            except Exception:
+                pass
             await asyncio.sleep(2)
     except asyncio.CancelledError:
         pass
@@ -68,15 +66,13 @@ async def speed_test_handler(message: Message):
         f"📦 <b>File Size:</b> {size_str}"
     )
 
-    # ---- DOWNLOAD STEP (Zero-Copy) ----
+    # ---- DOWNLOAD STEP ----
     start_download = time.time()
     try:
         file_info = await bot.get_file(file_id)
+        # දැන් Docker සහ Host දෙකේම Path සමාන නිසා කිසිදු Replace කිරීමක් අවශ්‍ය නොවේ!
+        real_file_path = file_info.file_path
         
-        real_file_path = file_info.file_path.replace(
-            "/var/lib/telegram-bot-api", 
-            "/tmp/telegram-bot-api-data"
-        )
     except Exception as e:
         await status_msg.edit_text(f"❌ <b>Download Error:</b> {e}")
         return
@@ -93,8 +89,6 @@ async def speed_test_handler(message: Message):
 
     # ---- UPLOAD STEP ----
     start_upload = time.time()
-    
-    # Spinner එක වෙනම Background Task එකක් ලෙස ආරම්භ කිරීම
     spinner_task = asyncio.create_task(upload_spinner(status_msg, start_upload, size_str))
     
     try:
@@ -113,23 +107,20 @@ async def speed_test_handler(message: Message):
         else:
             sent_msg = await message.reply_document(document=upload_input, caption=base_caption)
 
-        # Upload එක සාර්ථක වූ පසු Spinner එක නැවැත්වීම
         spinner_task.cancel()
-
         ul_time = time.time() - start_upload
         ul_speed = (file_size / ul_time) if ul_time > 0 else 0
 
         final_caption = base_caption + f"📤 <b>Upload Speed:</b> {humanbits(ul_speed)}/s ({ul_time:.2f}s)"
         await sent_msg.edit_caption(caption=final_caption)
+        
+        # Upload එක සාර්ථක නම් පමණක් Status message එක මකා දමන්න
+        await status_msg.delete()
 
     except Exception as e:
         spinner_task.cancel()
+        # Error එකක් ආවොත් මකා දමන්නේ නැතිව තිරයේ දිස්වීමට සැලැස්වීම
         await status_msg.edit_text(f"❌ <b>Upload Error:</b> {e}")
-    finally:
-        try:
-            await status_msg.delete()
-        except Exception:
-            pass
 
 async def auto_restart_timer():
     await asyncio.sleep(19800)
