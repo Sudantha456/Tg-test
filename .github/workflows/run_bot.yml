@@ -1,0 +1,57 @@
+name: Telegram Compressor Bot
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    # සර්වර් එක ක්‍රාෂ් වුවහොත් හෝ නැවතුණහොත් පැය 6කට වරක් ස්වයංක්‍රීයව නැවත පණ ගැන්වීමට (Cron Job)
+    - cron: '0 */6 * * *'
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest # 4 vCPU සහ 16 GB RAM සර්වර් එක ලබා දේ
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # 1. 16GB සර්වර් එකේ නිදහස් ඉඩ ප්‍රමාණය (Storage) 35GB+ දක්වා වැඩි කරගැනීම
+    - name: Maximize Runner Space
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf "/usr/local/share/boost"
+        sudo rm -rf /usr/local/share/powershell
+        sudo rm -rf /usr/local/lib/node_modules
+
+    # 2. අවශ්‍ය මෘදුකාංග (FFmpeg) සහ Python Packages ස්ථාපනය කිරීම
+    - name: Install System Dependencies & Python Packages
+      run: |
+        sudo apt update
+        sudo apt install -y ffmpeg python3-pip
+        pip3 install pyrogram tgcrypto
+
+    # 3. zjns/telegram-bot-server Action එක හරහා ලොකල් සර්වර් එක පණ ගැන්වීම
+    - name: Telegram Bot Server
+      uses: zjns/telegram-bot-server@v1
+      with:
+        api_id: ${{ secrets.API_ID }}
+        api_hash: ${{ secrets.API_HASH }}
+        server-port: 8081 # අපි මේ සර්වර් එක 8081 Port එකේ Run කරමු
+
+    # 4. Local Bot Server එක සාර්ථකව වැඩ කරනවාද කියා සැබවින්ම තහවුරු කරගැනීම (Curl Test)
+    - name: Verify Local Bot Server Connection
+      run: |
+        sleep 3
+        curl -s http://127.0.0
+
+    # 5. ඔබ ලියූ Pyrogram Bot එක (bot.py) ධාවනය කිරීම සහ Secrets විචල්‍යයන් (Variables) ලබා දීම
+    - name: Run Pyrogram Bot
+      env:
+        API_ID: ${{ secrets.API_ID }}
+        API_HASH: ${{ secrets.API_HASH }}
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      run: |
+        python3 bot.py
