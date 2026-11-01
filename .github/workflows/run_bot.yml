@@ -5,49 +5,45 @@ on:
     branches: [ main ]
   workflow_dispatch:
   schedule:
-    # සර්වර් එක ක්‍රාෂ් වුවහොත් හෝ නැවතුණහොත් පැය 6කට වරක් ස්වයංක්‍රීයව නැවත පණ ගැන්වීමට (Cron Job)
+    # පැය 6කට වරක් ස්වයංක්‍රීයව නැවත පණ ගැන්වීමට (GitHub Action 6h limit)
     - cron: '0 */6 * * *'
 
 jobs:
   run-bot:
-    runs-on: ubuntu-latest # 4 vCPU සහ 16 GB RAM සර්වර් එක ලබා දේ
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    # 1. 16GB සර්වර් එකේ නිදහස් ඉඩ ප්‍රමාණය (Storage) 35GB+ දක්වා වැඩි කරගැනීම
-    - name: Maximize Runner Space
-      run: |
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf /usr/local/lib/android
-        sudo rm -rf /opt/ghc
-        sudo rm -rf "/usr/local/share/boost"
-        sudo rm -rf /usr/local/share/powershell
-        sudo rm -rf /usr/local/lib/node_modules
-
-    # 2. අවශ්‍ය මෘදුකාංග (FFmpeg) සහ Python Packages ස්ථාපනය කිරීම
+    # 1. අවශ්‍ය මෘදුකාංග (FFmpeg) සහ Python Packages ස්ථාපනය කිරීම
     - name: Install System Dependencies & Python Packages
       run: |
         sudo apt update
         sudo apt install -y ffmpeg python3-pip
         pip3 install pyrogram tgcrypto
 
-    # 3. zjns/telegram-bot-server Action එක හරහා ලොකල් සර්වර් එක පණ ගැන්වීම
-    - name: Telegram Bot Server
-      uses: zjns/telegram-bot-server@v1
-      with:
-        api_id: ${{ secrets.API_ID }}
-        api_hash: ${{ secrets.API_HASH }}
-        server-port: 8081 # අපි මේ සර්වර් එක 8081 Port එකේ Run කරමු
+    # 2. Official Docker Container එක හරහා Local Bot API Server එක Background Run කිරීම
+    - name: Start Telegram Bot API Server
+      run: |
+        docker run -d \
+          --name tg-bot-api \
+          -p 8081:8081 \
+          -v /tmp/telegram-bot-api-data:/var/lib/telegram-bot-api \
+          -e TELEGRAM_API_ID=${{ secrets.API_ID }} \
+          -e TELEGRAM_API_HASH=${{ secrets.API_HASH }} \
+          aiogram/telegram-bot-api:latest \
+          --local \
+          --http-port=8081 \
+          --dir=/var/lib/telegram-bot-api
 
-    # 4. Local Bot Server එක සාර්ථකව වැඩ කරනවාද කියා සැබවින්ම තහවුරු කරගැනීම (Curl Test)
+    # 3. Local Server එක සාර්ථකව Ready වනතුරු තත්පර 5ක් ලබා දී Connection එක තහවුරු කරගැනීම
     - name: Verify Local Bot Server Connection
       run: |
-        sleep 3
-        curl -s http://127.0.0.1:8081
+        sleep 5
+        curl -s http://127.0.0.1:8081 || exit 1
 
-    # 5. ඔබ ලියූ Pyrogram Bot එක (bot.py) ධාවනය කිරීම සහ Secrets විචල්‍යයන් (Variables) ලබා දීම
+    # 4. Pyrogram Bot එක ධාවනය කිරීම
     - name: Run Pyrogram Bot
       env:
         API_ID: ${{ secrets.API_ID }}
