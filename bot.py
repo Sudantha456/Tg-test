@@ -18,6 +18,7 @@ session = AiohttpSession(
 bot = Bot(token=BOT_TOKEN, session=session)
 dp = Dispatcher()
 
+# Bytes කියවිය හැකි අගයන් (KB, MB, GB) බවට පරිවර්තනය කිරීම
 def humanbits(size: float) -> str:
     if not size:
         return "0 B"
@@ -47,7 +48,7 @@ async def speed_test_handler(message: Message):
         # Local Server එකෙන් file path එක ලබා ගැනීම
         file_info = await bot.get_file(file_id)
         
-        # Local mode එකේදී file_path එක කෙලින්ම local disk path එකක් වේ
+        # Local mode එකේදී file_path එක කෙලින්ම local disk path එකක් වේ (Zero-copy transfer)
         source_file_path = file_info.file_path
         
         # Destination folder එකක් සාදා file එක download/copy කිරීම
@@ -94,7 +95,7 @@ async def speed_test_handler(message: Message):
     except Exception as e:
         await status_msg.edit_text(f"❌ <b>Upload Error:</b> {e}")
     finally:
-        # Temporary file එක ඉවත් කිරීම
+        # Temporary file එක ඉවත් කිරීම (Disk space ඉතිරි කිරීමට)
         if os.path.exists(download_dest):
             os.remove(download_dest)
         try:
@@ -102,15 +103,32 @@ async def speed_test_handler(message: Message):
         except Exception:
             pass
 
-# GitHub Actions limit එකට පෙර ආරක්ෂිතව නවත්වන ටයිමරය
+# GitHub Actions limit එකට (පැය 6) පෙර ආරක්ෂිතව නවත්වන ටයිමරය
 async def auto_restart_timer():
-    await asyncio.sleep(19800)
+    await asyncio.sleep(19800) # තත්පර 19800 = පැය 5 විනාඩි 30
     print("Action 6h limit approaching. Stopping dispatcher...")
     await dp.stop_polling()
     sys.exit(0)
 
 async def main():
-    print("🚀 Speed Test Bot is running with Local Bot Server!")
+    print("🚀 Speed Test Bot is starting...")
+    
+    # 1. Cloud Server එකෙන් Bot එක Log out කිරීම (20MB සීමාව ඉවත් කිරීමට)
+    # මේක පළමු වතාවේ පමණක් සාර්ථකව run වේවි. ඉන්පසු error එකක් ආවත් එය bypass වේ.
+    try:
+        print("Logging out from Telegram Cloud Server...")
+        
+        # Cloud server එකට request එක යැවීම සඳහා තාවකාලික Cloud session එකක් සෑදීම
+        cloud_bot = Bot(token=BOT_TOKEN)
+        await cloud_bot.log_out()
+        await cloud_bot.session.close()
+        
+        print("Successfully logged out from Cloud Server.")
+    except Exception as e:
+        print(f"Log out notice: {e} (This is normal if already logged out)")
+    
+    # 2. Local API Server එක හරහා Polling ආරම්භ කිරීම
+    print("🚀 Bot is now polling via Local Bot Server!")
     asyncio.create_task(auto_restart_timer())
     await dp.start_polling(bot)
 
