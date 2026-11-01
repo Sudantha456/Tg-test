@@ -45,7 +45,7 @@ jobs:
     - name: Verify Local Bot Server Connection
       run: |
         sleep 3
-        curl -s http://127.0.0
+        curl -s http://127.0.0.1:8081
 
     # 5. ඔබ ලියූ Pyrogram Bot එක (bot.py) ධාවනය කිරීම සහ Secrets විචල්‍යයන් (Variables) ලබා දීම
     - name: Run Pyrogram Bot
