@@ -16,14 +16,14 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    # 1. අවශ්‍ය මෘදුකාංග (FFmpeg) සහ Python Packages ස්ථාපනය කිරීම
+    # 1. අවශ්‍ය මෘදුකාංග සහ Python Packages (aiogram v3) ස්ථාපනය කිරීම
     - name: Install System Dependencies & Python Packages
       run: |
         sudo apt update
-        sudo apt install -y ffmpeg python3-pip
-        pip3 install pyrogram tgcrypto
+        sudo apt install -y ffmpeg python3-pip curl
+        pip3 install aiogram aiohttp
 
-    # 2. Official Docker Container එක හරහා Local Bot API Server එක Background Run කිරීම
+    # 2. Local Bot API Server එක Docker මඟින් Background Run කිරීම (--local mode)
     - name: Start Telegram Bot API Server
       run: |
         docker run -d \
@@ -37,17 +37,15 @@ jobs:
           --http-port=8081 \
           --dir=/var/lib/telegram-bot-api
 
-    # 3. Local Server එක සාර්ථකව Ready වනතුරු තත්පර 5ක් ලබා දී Connection එක තහවුරු කරගැනීම
+    # 3. Local Server එක සක්‍රීයදැයි පරීක්ෂා කිරීම (404 ලැබුණද Connection එක සාර්ථක ලෙස සැලකේ)
     - name: Verify Local Bot Server Connection
       run: |
         sleep 5
         curl -s http://127.0.0.1:8081 || exit 1
 
-    # 4. Pyrogram Bot එක ධාවනය කිරීම
-    - name: Run Pyrogram Bot
+    # 4. Aiogram Bot එක ධාවනය කිරීම
+    - name: Run Aiogram Bot
       env:
-        API_ID: ${{ secrets.API_ID }}
-        API_HASH: ${{ secrets.API_HASH }}
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
       run: |
         python3 bot.py
