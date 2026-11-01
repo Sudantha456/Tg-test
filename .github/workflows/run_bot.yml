@@ -15,39 +15,18 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
+    # C build tools සහ Python packages ස්ථාපනය
     - name: Install System Dependencies & Python Packages
       run: |
         sudo apt update
-        sudo apt install -y ffmpeg python3-pip curl
-        pip3 install aiogram aiohttp
+        sudo apt install -y python3-pip build-essential libssl-dev ffmpeg
+        pip3 install pyrogram tgcrypto
 
-    - name: Log out from Telegram Cloud
-      run: |
-        curl -s "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/logOut" || true
-        sleep 2
-
-    # Docker සහ Host දෙකෙහිම සමාන Path එකක් ( /var/lib/ ) සෑදීම
-    - name: Start Telegram Bot API Server
-      run: |
-        sudo mkdir -p /var/lib/telegram-bot-api
-        sudo chmod 777 /var/lib/telegram-bot-api
-        docker run -d \
-          --name tg-bot-api \
-          -p 8081:8081 \
-          -v /var/lib/telegram-bot-api:/var/lib/telegram-bot-api \
-          -e TELEGRAM_API_ID="${{ secrets.API_ID }}" \
-          -e TELEGRAM_API_HASH="${{ secrets.API_HASH }}" \
-          -e TELEGRAM_LOCAL="1" \
-          aiogram/telegram-bot-api:latest
-
-    - name: Verify Local Bot Server Connection
-      run: |
-        sleep 5
-        docker logs tg-bot-api
-        curl -s http://127.0.0.1:8081 || exit 1
-
-    - name: Run Aiogram Bot
+    # Pyrogram Bot එක ධාවනය කිරීම
+    - name: Run Pyrogram Bot
       env:
+        API_ID: ${{ secrets.API_ID }}
+        API_HASH: ${{ secrets.API_HASH }}
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
       run: |
         python3 bot.py
