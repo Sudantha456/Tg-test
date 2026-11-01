@@ -16,14 +16,14 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    # 1. අවශ්‍ය මෘදුකාංග සහ aiogram ස්ථාපනය කිරීම
+    # 1. අවශ්‍ය පද්ධති මෘදුකාංග සහ aiogram ස්ථාපනය කිරීම
     - name: Install System Dependencies & Python Packages
       run: |
         sudo apt update
         sudo apt install -y ffmpeg python3-pip curl
         pip3 install aiogram aiohttp
 
-    # 2. Local Bot API Container එක Run කිරීම
+    # 2. Local Telegram Bot API Server එක Docker මඟින් Background Run කිරීම
     - name: Start Telegram Bot API Server
       run: |
         mkdir -p /tmp/telegram-bot-api-data
@@ -32,14 +32,14 @@ jobs:
           --name tg-bot-api \
           -p 8081:8081 \
           -v /tmp/telegram-bot-api-data:/var/lib/telegram-bot-api \
+          -e TELEGRAM_API_ID="${{ secrets.API_ID }}" \
+          -e TELEGRAM_API_HASH="${{ secrets.API_HASH }}" \
           aiogram/telegram-bot-api:latest \
-          --api-id="${{ secrets.API_ID }}" \
-          --api-hash="${{ secrets.API_HASH }}" \
           --local \
           --http-port=8081 \
           --dir=/var/lib/telegram-bot-api
 
-    # 3. Server එක ready වනතුරු තත්පර 5ක් සිට පරීක්ෂා කිරීම සහ Docker logs බැලීම
+    # 3. Server එක ready වනතුරු තත්පර 5ක් ලබා දී Connection එක තහවුරු කරගැනීම
     - name: Verify Local Bot Server Connection
       run: |
         sleep 5
