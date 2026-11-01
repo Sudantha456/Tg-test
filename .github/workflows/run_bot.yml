@@ -21,21 +21,20 @@ jobs:
         sudo apt install -y ffmpeg python3-pip curl
         pip3 install aiogram aiohttp
 
-    # 1. Cloud Server එකෙන් Bot එක අනිවාර්යයෙන්ම Log out කිරීම
     - name: Log out from Telegram Cloud
       run: |
         curl -s "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/logOut" || true
         sleep 2
 
-    # 2. Local Server එක (TELEGRAM_LOCAL="1" සමඟ) ආරම්භ කිරීම
+    # Docker සහ Host දෙකෙහිම සමාන Path එකක් ( /var/lib/ ) සෑදීම
     - name: Start Telegram Bot API Server
       run: |
-        mkdir -p /tmp/telegram-bot-api-data
-        chmod 777 /tmp/telegram-bot-api-data
+        sudo mkdir -p /var/lib/telegram-bot-api
+        sudo chmod 777 /var/lib/telegram-bot-api
         docker run -d \
           --name tg-bot-api \
           -p 8081:8081 \
-          -v /tmp/telegram-bot-api-data:/var/lib/telegram-bot-api \
+          -v /var/lib/telegram-bot-api:/var/lib/telegram-bot-api \
           -e TELEGRAM_API_ID="${{ secrets.API_ID }}" \
           -e TELEGRAM_API_HASH="${{ secrets.API_HASH }}" \
           -e TELEGRAM_LOCAL="1" \
